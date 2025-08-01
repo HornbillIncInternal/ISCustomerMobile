@@ -1,0 +1,79 @@
+﻿TERMS AND CONDITIONS
+COWORKING SPACE BOOKING APPLICATION
+Last Updated: March 17, 2025
+Welcome to InnerSpace Coworking App . This App is owned and operated by Innerspace Coworking . By downloading, accessing, or using our App, you agree to be bound by these Terms and Conditions .
+Please read these Terms carefully before using the App. If you do not agree with any part of these Terms, you must not use the App.
+1. ACCEPTANCE OF TERMS
+1.1 By creating an account, accessing, or using the App, you confirm that you have read, understood, and agree to be bound by these Terms, as well as our Privacy Policy.
+1.2 We reserve the right to modify these Terms at any time. Any changes will be effective immediately upon posting the updated Terms within the App. Your continued use of the App after any such changes constitutes your acceptance of the new Terms.
+2. ACCOUNT REGISTRATION
+2.1 To use our App, you must create an account. You agree to provide accurate, current, and complete information during the registration process.
+2.2 You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.
+2.3 You must immediately notify us of any unauthorized use of your account or any other breach of security.
+2.4 We reserve the right to terminate or suspend your account at our sole discretion without notice if we believe you have violated these Terms.
+3. BOOKING SERVICES
+3.1 The App allows you to book workspace, meeting rooms, and other amenities ("Services") at our coworking locations.
+3.2 All bookings are subject to availability. We reserve the right to refuse or cancel any booking at our discretion.
+3.3 Prices for Services are as listed in the App and may change without notice. All prices are exclusive of applicable taxes unless otherwise stated.
+3.4 By making a booking, you agree to pay the specified fees according to the payment terms outlined in these Terms.
+4. PAYMENT TERMS
+4.1 Payment for bookings must be made through the App using one of our accepted payment methods.
+4.2 All payments are processed securely through third-party payment processors. We do not store complete credit card information on our servers.
+4.3 For recurring memberships, you authorize us to charge your payment method on a recurring basis until you cancel your membership.
+4.4 If your payment method is declined, you agree to provide an alternative payment method upon request and to pay any outstanding amounts.
+5. CANCELLATION AND REFUNDS
+5.1 Workspace reservations may be cancelled according to the following policy:
+* Cancellations made 48+ hours in advance: Full refund
+* Cancellations made 24-48 hours in advance: 50% refund
+* Cancellations made less than 24 hours in advance: No refund
+5.2 Meeting room reservations may be cancelled according to the following policy:
+* Cancellations made 72+ hours in advance: Full refund
+* Cancellations made 48-72 hours in advance: 75% refund
+* Cancellations made 24-48 hours in advance: 50% refund
+* Cancellations made less than 24 hours in advance: No refund
+5.3 Monthly memberships require a 30-day written notice for cancellation.
+5.4 We reserve the right to modify our cancellation and refund policies at any time.
+6. RULES OF CONDUCT
+6.1 When using our coworking spaces, you agree to:
+* Respect other members and staff
+* Use the facilities in a professional manner
+* Comply with all posted rules and regulations
+* Follow all health and safety guidelines
+* Not engage in any illegal activities
+* Not damage or misuse property or equipment
+6.2 We reserve the right to ask you to leave the premises and/or terminate your membership if you violate these rules of conduct.
+7. LIMITATION OF LIABILITY
+7.1 The App and Services are provided on an "as is" and "as available" basis without warranties of any kind.
+7.2 We do not guarantee that the App will be error-free, uninterrupted, or secure.
+7.3 To the maximum extent permitted by law, we shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including lost profits, arising out of or relating to the use of the App or Services.
+7.4 Our total liability for any claims under these Terms shall not exceed the amounts paid by you to us in the three (3) months preceding the event giving rise to the claim.
+8. INDEMNIFICATION
+8.1 You agree to indemnify, defend, and hold harmless the Company, its officers, directors, employees, agents, and affiliates from and against any claims, liabilities, damages, losses, costs, expenses, or fees (including reasonable attorneys' fees) arising from:
+* Your use of the App
+* Your violation of these Terms
+* Your violation of any rights of a third party
+* Your conduct at our coworking spaces
+9. INTELLECTUAL PROPERTY
+9.1 The App, including all content, features, and functionality, is owned by the Company and protected by copyright, trademark, and other intellectual property laws.
+9.2 You are granted a limited, non-exclusive, non-transferable license to use the App solely for booking and managing coworking space reservations.
+9.3 You agree not to reproduce, distribute, modify, create derivative works of, publicly display, publicly perform, republish, download, store, or transmit any content on the App without our written consent.
+10. PRIVACY
+10.1 We collect, store, and process your personal data in accordance with our Privacy Policy, which is incorporated into these Terms by reference.
+10.2 By using the App, you consent to such processing and you represent that all information you provide is accurate.
+11. TERMINATION
+11.1 We may terminate or suspend your access to the App immediately, without prior notice or liability, for any reason, including if you breach these Terms.
+11.2 Upon termination, your right to use the App will immediately cease.
+12. GOVERNING LAW AND DISPUTE RESOLUTION
+12.1 These Terms shall be governed by and construed in accordance with the laws of Kerala, India.
+12.2 Any dispute arising out of or relating to these Terms shall be resolved through binding arbitration in accordance with the rules of Indian Arbitration Association in Ernakulam, Kerala, India.
+12.3 The arbitration shall be conducted by a single arbitrator, and judgment on the award may be entered in any court having jurisdiction thereof.
+13. MISCELLANEOUS
+13.1 These Terms constitute the entire agreement between you and us regarding the App and supersede all prior agreements and understandings.
+13.2 Our failure to enforce any right or provision of these Terms will not be considered a waiver of those rights.
+13.3 If any provision of these Terms is held to be invalid or unenforceable, the remaining provisions shall remain in full force and effect.
+13.4 You may not assign or transfer these Terms without our prior written consent.
+13.5 These Terms do not create any agency, partnership, joint venture, or employment relationship.
+14. CONTACT US
+14.1 For questions about these Terms or the App, please contact us at:
+Innerspace Coworking SRM Road, near NIRMALA SISU BHAVAN, Ayyappankavu, Ernakulam, Kerala 682018 admin@innerspace.com 096455 34444
+By using our App, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.
