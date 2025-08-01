@@ -1,0 +1,12 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+build/
+android/.gradle/
+android/app/build/
+ios/Pods/
+pubspec.lock
+.dart_tool/
+.idea/
+*.apk
+*.aab
