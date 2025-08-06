@@ -12,8 +12,99 @@ import '../destination/bloc_destination.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syncfusion_flutter_datepicker/datepicker.dart';
-
 class AppCalendar extends StatelessWidget {
+  final void Function(PickerDateRange) onConfirm;
+  final DateTime? initialStartDate; // Add this parameter
+  final DateTime? initialEndDate;   // Add this parameter
+
+  AppCalendar({
+    super.key,
+    required this.onConfirm,
+    this.initialStartDate,    // Add this
+    this.initialEndDate,      // Add this
+  });
+
+  final List<DateTime> disabledDates = [];
+
+  void addAllSundays(DateTime startDate, DateTime endDate) {
+    DateTime currentDate = startDate;
+
+    while (currentDate.isBefore(endDate) || currentDate.isAtSameMomentAs(endDate)) {
+      // Check if the current date is a Sunday
+      if (currentDate.weekday == DateTime.sunday) {
+        disabledDates.add(currentDate);
+      }
+      // Move to the next day
+      currentDate = currentDate.add(const Duration(days: 1));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    DateTime startDate = DateTime.now();
+    DateTime endDate = DateTime(startDate.year + 1, startDate.month, startDate.day); // Next 1 year
+
+    addAllSundays(startDate, endDate);
+
+    print(disabledDates);
+
+    return BlocBuilder<DateBloc, DateState>(
+      builder: (context, state) {
+        // FIXED: Create initial range from provided dates
+        PickerDateRange? initialSelectedRange;
+
+        if (state is DateSelectionSuccess) {
+          // Use the state if available
+          initialSelectedRange = state.dateRange;
+        } else if (initialStartDate != null) {
+          // FIXED: Use the provided initial dates for highlighting
+          initialSelectedRange = PickerDateRange(
+            initialStartDate,
+            initialEndDate ?? initialStartDate,
+          );
+
+          print('AppCalendar: Using initial dates for highlighting');
+          print('Initial start: $initialStartDate');
+          print('Initial end: ${initialEndDate ?? initialStartDate}');
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 4.0, left: 16, right: 16, bottom: 2),
+          child: SfDateRangePicker(
+            minDate: DateTime.now(),
+            todayHighlightColor: primary_color,
+            startRangeSelectionColor: primary_color,
+            endRangeSelectionColor: primary_color,
+            rangeSelectionColor: Colors.orangeAccent,
+
+            selectableDayPredicate: (date) {
+              return !disabledDates.contains(date);
+            },
+
+            onSelectionChanged: (args) {
+              if (args.value is PickerDateRange) {
+                final selectedDateRange = args.value as PickerDateRange;
+                BlocProvider.of<DateBloc>(context)
+                    .add(DateSelected(selectedDateRange));
+                onConfirm(selectedDateRange);
+                print("Selected Date Range: ${selectedDateRange.startDate} to ${selectedDateRange.endDate}");
+              }
+            },
+
+            selectionMode: DateRangePickerSelectionMode.range,
+
+            // FIXED: Use the calculated initial range
+            initialSelectedRange: initialSelectedRange,
+
+            // FIXED: Add initial display date to focus on the selected month
+            initialDisplayDate: initialStartDate ?? DateTime.now(),
+          ),
+        );
+      },
+    );
+  }
+}
+/*class AppCalendar extends StatelessWidget {
   final void Function(PickerDateRange) onConfirm;
 
   AppCalendar({super.key, required this.onConfirm});
@@ -75,7 +166,7 @@ class AppCalendar extends StatelessWidget {
       },
     );
   }
-}
+}*/
 
 /*class AppCalendar extends StatelessWidget {
   final void Function(PickerDateRange, DateTime, DateTime) onConfirm;

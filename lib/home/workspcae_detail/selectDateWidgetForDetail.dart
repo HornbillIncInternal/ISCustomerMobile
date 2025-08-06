@@ -1,23 +1,19 @@
-import 'package:hb_booking_mobile_app/search/bloc_search.dart';
-import 'package:hb_booking_mobile_app/search/date/bloc_date.dart';
-import 'package:hb_booking_mobile_app/search/date/state_date.dart';
-import 'package:hb_booking_mobile_app/search/destination/bloc_destination.dart';
-import 'package:hb_booking_mobile_app/search/state_search.dart';
-import 'package:hb_booking_mobile_app/search/widgets/widget_app_calender.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
+import 'package:syncfusion_flutter_datepicker/datepicker.dart';
+
+import 'package:hb_booking_mobile_app/search/state_search.dart';
+
 import 'package:hb_booking_mobile_app/utils/colors.dart';
-import 'package:intl/intl.dart';
 
+import '../../search/date/bloc_date.dart';
+import '../../search/date/event_date.dart';
+import '../../search/date/state_date.dart';
 
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+// Import this file as: import '../../search/widgets/widget_select_date_detail.dart';
 
-import '../../home/asset_bloc/asset_bloc.dart';
-import '../../home/asset_bloc/asset_event.dart';
-
-
-class SelectDateWidget extends StatefulWidget {
+class SelectDateWidgetForDetail extends StatefulWidget {
   final BookingStep step;
   final void Function(String startDate, String? endDate) onDateConfirm;
   final void Function(String startTime, String endTime)? onTimeConfirm;
@@ -29,7 +25,7 @@ class SelectDateWidget extends StatefulWidget {
   final bool showConfirmButton;
   final bool enableTimeSelection;
 
-  const SelectDateWidget({
+  const SelectDateWidgetForDetail({
     Key? key,
     required this.step,
     required this.onDateConfirm,
@@ -44,10 +40,10 @@ class SelectDateWidget extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _SelectDateWidgetState createState() => _SelectDateWidgetState();
+  _SelectDateWidgetForDetailState createState() => _SelectDateWidgetForDetailState();
 }
 
-class _SelectDateWidgetState extends State<SelectDateWidget> {
+class _SelectDateWidgetForDetailState extends State<SelectDateWidgetForDetail> {
   DateTime? selectedStartDate;
   DateTime? selectedEndDate;
   int startHour = 9;
@@ -66,13 +62,13 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
     enableTimeSelection = widget.enableTimeSelection ||
         (widget.initialStartTime != null && widget.initialStartTime!.isNotEmpty);
 
-    // FIXED: Initialize with provided dates if available
+    // Initialize with provided dates if available
     if (widget.initialStartDate != null) {
       selectedStartDate = widget.initialStartDate;
       selectedEndDate = widget.initialEndDate ?? widget.initialStartDate;
-      isDateRangeSelected = true; // IMPORTANT: Mark as selected
+      isDateRangeSelected = true;
 
-      print('Initialized with dates:');
+      print('SelectDateWidgetForDetail initialized with dates:');
       print('Start: $selectedStartDate');
       print('End: $selectedEndDate');
       print('Date range selected: $isDateRangeSelected');
@@ -107,7 +103,7 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
       isTimeSelected = true;
     }
 
-    print('SelectDateWidget initialized with:');
+    print('SelectDateWidgetForDetail initialized with:');
     print('Start date: $selectedStartDate, time: ${isTimeSelected ? "$startHour:$startMinute" : "not selected"}');
     print('End date: $selectedEndDate, time: ${isTimeSelected ? "$endHour:$endMinute" : "not selected"}');
     print('Time selection enabled: $enableTimeSelection');
@@ -115,10 +111,10 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
   }
 
   @override
-  void didUpdateWidget(SelectDateWidget oldWidget) {
+  void didUpdateWidget(SelectDateWidgetForDetail oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // FIXED: Update dates when widget parameters change
+    // Update dates when widget parameters change
     if (oldWidget.initialStartDate != widget.initialStartDate ||
         oldWidget.initialEndDate != widget.initialEndDate) {
       setState(() {
@@ -136,7 +132,7 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
 
     // Update enableTimeSelection when widget parameter changes
     if (oldWidget.enableTimeSelection != widget.enableTimeSelection) {
-      print('SelectDateWidget: enableTimeSelection changed from ${oldWidget.enableTimeSelection} to ${widget.enableTimeSelection}');
+      print('SelectDateWidgetForDetail: enableTimeSelection changed from ${oldWidget.enableTimeSelection} to ${widget.enableTimeSelection}');
       setState(() {
         enableTimeSelection = widget.enableTimeSelection;
 
@@ -211,9 +207,6 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
       widget.onTimeConfirm!(startTime, endTime);
     }
 
-    // Trigger refresh of shared AssetBloc when time changes
-    _triggerAssetRefresh();
-
     // Auto-confirm if not showing a confirm button and date is selected
     if (!widget.showConfirmButton && isDateRangeSelected) {
       _confirmDateSelection();
@@ -243,67 +236,9 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
       print('Start date: $selectedStartDate');
       print('End date: $selectedEndDate');
 
-      // Trigger refresh of shared AssetBloc when date changes
-      _triggerAssetRefresh();
-
       // Auto-confirm if not showing a confirm button
       if (!widget.showConfirmButton) {
         _confirmDateSelection();
-      }
-    }
-  }
-
-  // Method to trigger AssetBloc refresh when date/time changes
-  void _triggerAssetRefresh() {
-    if (mounted && context.mounted) {
-      try {
-        final assetBloc = context.read<AssetBloc>();
-
-        String? location;
-        String? asset;
-
-        try {
-          final bookingState = context.read<BookingSearchBloc>().state;
-          location = bookingState.selectedLocation;
-          asset = bookingState.selectedAsset;
-        } catch (e) {
-          location = 'kochi';
-          asset = null;
-        }
-
-        // Format dates
-        String? startDate;
-        String? endDate;
-        if (selectedStartDate != null) {
-          startDate = '${selectedStartDate!.year}-${selectedStartDate!.month.toString().padLeft(2, '0')}-${selectedStartDate!.day.toString().padLeft(2, '0')}';
-        }
-        if (selectedEndDate != null) {
-          endDate = '${selectedEndDate!.year}-${selectedEndDate!.month.toString().padLeft(2, '0')}-${selectedEndDate!.day.toString().padLeft(2, '0')}';
-        }
-
-        // Format times if selected and enabled
-        String? startTime;
-        String? endTime;
-        if (enableTimeSelection && isTimeSelected) {
-          startTime = '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}:00';
-          endTime = '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}:00';
-          print('Formatted times for AssetBloc: startTime=$startTime, endTime=$endTime');
-        }
-
-        // Trigger new asset fetch with updated parameters
-        assetBloc.add(FetchAssetsEvent(
-          location: location ?? 'kochi',
-          asset: asset,
-          startDate: startDate,
-          startTime: startTime,
-          endDate: endDate,
-          endTime: endTime,
-          context: context,
-        ));
-
-        print('AssetBloc refresh triggered with updated date/time');
-      } catch (e) {
-        print('AssetBloc not available in widget tree: $e');
       }
     }
   }
@@ -328,14 +263,24 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
 
     widget.onDateConfirm(startDate, endDate);
 
-    // Only confirm time if time selection is enabled AND time is selected AND callback is provided
-    if (enableTimeSelection && isTimeSelected && widget.onTimeConfirm != null) {
-      String startTime = '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}:00';
-      String endTime = '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}:00';
-      print('Confirming time selection: $startTime to $endTime');
-      widget.onTimeConfirm!(startTime, endTime);
-    } else if (!enableTimeSelection) {
-      print('Time selection disabled - not passing time to callback');
+    // FIXED: Always confirm time state, even if disabled
+    if (widget.onTimeConfirm != null) {
+      if (enableTimeSelection && isTimeSelected) {
+        String startTime = '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}:00';
+        String endTime = '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}:00';
+        print('Confirming time selection: $startTime to $endTime');
+        widget.onTimeConfirm!(startTime, endTime);
+      } else {
+        // FIXED: When time is disabled, pass default times to indicate no specific time
+        print('Time selection disabled - passing default midnight times');
+        widget.onTimeConfirm!('00:00:00', '00:00:00');
+      }
+    }
+
+    // FIXED: Also call onTimeDisabled when time selection is disabled
+    if (!enableTimeSelection && widget.onTimeDisabled != null) {
+      print('Calling onTimeDisabled callback');
+      widget.onTimeDisabled!();
     }
   }
 
@@ -349,7 +294,7 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
         builder: (context, state) {
           String displayText = '';
 
-          // FIXED: Don't override existing selection if we already have dates
+          // Don't override existing selection if we already have dates
           if (state is DateSelectionSuccess && !isDateRangeSelected) {
             final DateFormat formatter = DateFormat('MM/dd/yyyy');
             final startDate = formatter.format(state.dateRange.startDate!);
@@ -368,7 +313,7 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
               _confirmDateSelection();
             }
           } else if (isDateRangeSelected && selectedStartDate != null && selectedEndDate != null) {
-            // FIXED: Show current selection if we have dates
+            // Show current selection if we have dates
             final DateFormat formatter = DateFormat('MM/dd/yyyy');
             final startDate = formatter.format(selectedStartDate!);
             final endDate = formatter.format(selectedEndDate!);
@@ -393,14 +338,7 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'When?',
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineSmall!
-                          .copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: size.height * 0.02),
+
 
                     // Time selection toggle
                     Row(
@@ -449,9 +387,7 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
                               }
                             });
 
-                            _triggerAssetRefresh();
-
-                            // FIXED: Only auto-confirm if dates are actually selected
+                            // Only auto-confirm if dates are actually selected
                             if (isDateRangeSelected && selectedStartDate != null && selectedEndDate != null) {
                               _confirmDateSelection();
                             }
@@ -462,10 +398,10 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
 
                     SizedBox(height: size.height * 0.02),
 
-                    // FIXED: Pass initial dates to AppCalendar for highlighting
-                    AppCalendar(
-                      initialStartDate: selectedStartDate, // Add this parameter
-                      initialEndDate: selectedEndDate,     // Add this parameter
+                    // Pass initial dates to AppCalendar for highlighting
+                    AppCalendarForDetail(
+                      initialStartDate: selectedStartDate,
+                      initialEndDate: selectedEndDate,
                       onConfirm: (dateRange) {
                         _updateDateSelection(dateRange);
                       },
@@ -474,7 +410,7 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
                     // Only show time picker if enabled
                     if (enableTimeSelection) ...[
                       SizedBox(height: size.height * 0.01),
-                      TimePickerSection(
+                      TimePickerSectionForDetail(
                         initialStartHour: startHour,
                         initialEndHour: endHour,
                         onTimeSelected: _updateTimeSelection,
@@ -532,13 +468,12 @@ class _SelectDateWidgetState extends State<SelectDateWidget> {
   }
 }
 
-
-class TimePickerSection extends StatefulWidget {
+class TimePickerSectionForDetail extends StatefulWidget {
   final void Function(int startHour, int startMinute, int endHour, int endMinute) onTimeSelected;
   final int initialStartHour;
   final int initialEndHour;
 
-  const TimePickerSection({
+  const TimePickerSectionForDetail({
     Key? key,
     required this.onTimeSelected,
     this.initialStartHour = 9,
@@ -546,10 +481,10 @@ class TimePickerSection extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _TimePickerSectionState createState() => _TimePickerSectionState();
+  _TimePickerSectionForDetailState createState() => _TimePickerSectionForDetailState();
 }
 
-class _TimePickerSectionState extends State<TimePickerSection> {
+class _TimePickerSectionForDetailState extends State<TimePickerSectionForDetail> {
   late int _startHour;
   late int _endHour;
 
@@ -558,14 +493,14 @@ class _TimePickerSectionState extends State<TimePickerSection> {
     super.initState();
 
     // Ensure initial hours are within the valid range (9 AM to 6 PM)
-    _startHour = widget.initialStartHour.clamp(9, 17); // Start time max 5 PM (so end time can be at least 6 PM)
-    _endHour = widget.initialEndHour.clamp(_startHour + 1, 18); // End time must be after start and max 6 PM
+    _startHour = widget.initialStartHour.clamp(9, 17);
+    _endHour = widget.initialEndHour.clamp(_startHour + 1, 18);
 
-    print('TimePickerSection initialized with start hour: $_startHour, end hour: $_endHour');
+    print('TimePickerSectionForDetail initialized with start hour: $_startHour, end hour: $_endHour');
   }
 
   @override
-  void didUpdateWidget(TimePickerSection oldWidget) {
+  void didUpdateWidget(TimePickerSectionForDetail oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Update hours if initial values changed, ensuring they're within valid range
     if (oldWidget.initialStartHour != widget.initialStartHour) {
@@ -699,7 +634,7 @@ class _TimePickerSectionState extends State<TimePickerSection> {
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<int>(
                     value: _endHour,
-                    items: _getEndHourItems(), // Use the separate method for end time items
+                    items: _getEndHourItems(),
                     onChanged: _updateEndTime,
                   ),
                 ),
@@ -712,10 +647,93 @@ class _TimePickerSectionState extends State<TimePickerSection> {
   }
 }
 
+class AppCalendarForDetail extends StatelessWidget {
+  final void Function(PickerDateRange) onConfirm;
+  final DateTime? initialStartDate;
+  final DateTime? initialEndDate;
 
+  AppCalendarForDetail({
+    super.key,
+    required this.onConfirm,
+    this.initialStartDate,
+    this.initialEndDate,
+  });
 
+  final List<DateTime> disabledDates = [];
 
+  void addAllSundays(DateTime startDate, DateTime endDate) {
+    DateTime currentDate = startDate;
 
+    while (currentDate.isBefore(endDate) || currentDate.isAtSameMomentAs(endDate)) {
+      // Check if the current date is a Sunday
+      if (currentDate.weekday == DateTime.sunday) {
+        disabledDates.add(currentDate);
+      }
+      // Move to the next day
+      currentDate = currentDate.add(const Duration(days: 1));
+    }
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    DateTime startDate = DateTime.now();
+    DateTime endDate = DateTime(startDate.year + 1, startDate.month, startDate.day);
 
+    addAllSundays(startDate, endDate);
 
+    return BlocBuilder<DateBloc, DateState>(
+      builder: (context, state) {
+        // Create initial range from provided dates
+        PickerDateRange? initialSelectedRange;
+
+        if (state is DateSelectionSuccess) {
+          // Use the state if available
+          initialSelectedRange = state.dateRange;
+        } else if (initialStartDate != null) {
+          // Use the provided initial dates for highlighting
+          initialSelectedRange = PickerDateRange(
+            initialStartDate,
+            initialEndDate ?? initialStartDate,
+          );
+
+          print('AppCalendarForDetail: Using initial dates for highlighting');
+          print('Initial start: $initialStartDate');
+          print('Initial end: ${initialEndDate ?? initialStartDate}');
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 4.0, left: 16, right: 16, bottom: 2),
+          child: SfDateRangePicker(
+            minDate: DateTime.now(),
+            todayHighlightColor: primary_color,
+            startRangeSelectionColor: primary_color,
+            endRangeSelectionColor: primary_color,
+            rangeSelectionColor: Colors.orangeAccent,
+
+            selectableDayPredicate: (date) {
+              return !disabledDates.contains(date);
+            },
+
+            onSelectionChanged: (args) {
+              if (args.value is PickerDateRange) {
+                final selectedDateRange = args.value as PickerDateRange;
+                BlocProvider.of<DateBloc>(context)
+                    .add(DateSelected(selectedDateRange));
+                onConfirm(selectedDateRange);
+                print("Selected Date Range: ${selectedDateRange.startDate} to ${selectedDateRange.endDate}");
+              }
+            },
+
+            selectionMode: DateRangePickerSelectionMode.range,
+
+            // Use the calculated initial range
+            initialSelectedRange: initialSelectedRange,
+
+            // Add initial display date to focus on the selected month
+            initialDisplayDate: initialStartDate ?? DateTime.now(),
+          ),
+        );
+      },
+    );
+  }
+}

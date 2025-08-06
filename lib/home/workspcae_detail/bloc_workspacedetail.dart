@@ -13,15 +13,109 @@ import 'event_workspacedetail.dart';
 
 import 'package:http/http.dart' as http;
 import 'package:bloc/bloc.dart';
-/*
+
+class EffectivePackagesData {
+  final double? price;
+  final double? effectivePrice;
+  final List<EffectivePackage> packages;
+
+  EffectivePackagesData({
+    this.price,
+    this.effectivePrice,
+    required this.packages,
+  });
+
+  factory EffectivePackagesData.fromJson(Map<String, dynamic> json) {
+    return EffectivePackagesData(
+      price: json['price']?.toDouble(),
+      effectivePrice: json['effectivePrice']?.toDouble(),
+      packages: json['packages'] != null
+          ? List<EffectivePackage>.from(json['packages'].map((x) => EffectivePackage.fromJson(x)))
+          : [],
+    );
+  }
+}
+
+class EffectivePackage {
+  final String id;
+  final String type;
+  final String name;
+  final double rate;
+  final PackageDuration duration;
+  final double perUnitRate;
+
+  EffectivePackage({
+    required this.id,
+    required this.type,
+    required this.name,
+    required this.rate,
+    required this.duration,
+    required this.perUnitRate,
+  });
+
+  factory EffectivePackage.fromJson(Map<String, dynamic> json) {
+    return EffectivePackage(
+      id: json['_id'] ?? '',
+      type: json['type'] ?? '',
+      name: json['name'] ?? '',
+      rate: (json['rate'] ?? 0).toDouble(),
+      duration: PackageDuration.fromJson(json['duration'] ?? {}),
+      perUnitRate: (json['perUnitRate'] ?? 0).toDouble(),
+    );
+  }
+}
+
+class PackageDuration {
+  final String unit;
+  final int value;
+
+  PackageDuration({
+    required this.unit,
+    required this.value,
+  });
+
+  factory PackageDuration.fromJson(Map<String, dynamic> json) {
+    return PackageDuration(
+      unit: json['unit'] ?? '',
+      value: json['value'] ?? 1,
+    );
+  }
+}
+
+// Cache class for effective packages data
+class CachedEffectivePackagesData {
+  final EffectivePackagesData data;
+  final DateTime timestamp;
+
+  CachedEffectivePackagesData(this.data, this.timestamp);
+
+  bool get isExpired =>
+      DateTime.now().difference(timestamp) > WorkspaceDetailBloc.cacheExpiry;
+}
+
+
+// Updated WorkspaceDetailBloc
 class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailState> {
+  // Add caching for effective packages data
+  static final Map<String, CachedEffectivePackagesData> _effectivePackagesCache = {};
+  static const Duration cacheExpiry = Duration(minutes: 3);
+
+  // Debounce timer for API calls
+  Timer? _debounceTimer;
+
   WorkspaceDetailBloc() : super(WorkspaceDetailInitial()) {
     on<InitializeWorkspaceDetail>(_onInitializeWorkspaceDetail);
     on<UpdateDateRange>(_onUpdateDateRange);
-    on<FetchAvailabilityAndUpdate>(_onFetchAvailabilityAndUpdate);
     on<ToggleDescription>(_onToggleDescription);
     on<IncrementCount>(_onIncrementCount);
     on<DecrementCount>(_onDecrementCount);
+    on<FetchEffectivePackages>(_onFetchEffectivePackages);
+  }
+
+  // FIXED: Add method to clear cache
+  void clearEffectivePackagesCache() {
+    _effectivePackagesCache.clear();
+    print("Cleared effective packages cache");
   }
 
   Future<void> _onInitializeWorkspaceDetail(
@@ -29,153 +123,62 @@ class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailStat
       Emitter<WorkspaceDetailState> emit
       ) async {
     emit(WorkspaceDetailLoading());
+
     try {
-      // Get initial availability from the API response
-      final initialAvailableCount = event.apiResponse.availableItems!.count!;
+      print("InitializeWorkspaceDetail - apiResponse: ${event.apiResponse}");
+      print("InitializeWorkspaceDetail - familyId: ${event.apiResponse.familyId}");
+      print("InitializeWorkspaceDetail - hasTimeSelected: ${event.hasTimeSelected}");
 
-      // Fetch fresh availability data using your slots API
-      final assetId = event.apiResponse.availableItems!.items!.isNotEmpty
-          ? event.apiResponse.availableItems!.items![0].assets![0].id!
-          : '';
+      // Use initial count from API response immediately
+      final initialAvailableCount = event.apiResponse.availableItems?.count ?? 0;
+      final effectivePrice = event.apiResponse.rate?.effectivePrice?.toDouble() ?? 0.0;
 
-      int availableCount = initialAvailableCount;
+      // Try to fetch effective packages immediately
+      EffectivePackagesData? effectivePackagesData;
+      final familyId = event.apiResponse.familyId;
 
-      if (assetId.isNotEmpty) {
+      if (familyId != null && familyId.isNotEmpty) {
         try {
-          final availabilityData = await fetchAvailabilityData(
-            assetId: assetId,
-            start: event.startDate.toIso8601String(),
-            end: event.endDate.toIso8601String(),
-            hasTimeSelected: false, // Initially no time is selected
+          effectivePackagesData = await fetchEffectivePackages(
+            familyId: familyId,
+            fromDate: event.startDate,
+            toDate: event.endDate,
+            hasTimeSelected: event.hasTimeSelected, // FIXED: Use the correct parameter
           );
-
-          // Use the computed availableItemsCount from slots
-          availableCount = availabilityData.availableItemsCount ?? 0;
-          print("Initial availability count from slots: $availableCount");
+          print("Successfully fetched effective packages during initialization");
         } catch (e) {
-          print('Failed to fetch availability: $e');
-          // Use initial count as fallback
+          print('Error fetching effective packages during initialization: $e');
+          // Continue with original data
         }
+      } else {
+        print('No familyId available for effective packages fetch');
       }
 
-      // Calculate total price using effective price from rate
-      final effectivePrice = event.apiResponse.rate!.effectivePrice!;
-
-      emit(WorkspaceDetailLoaded(
-        asset: event.apiResponse,
-        count: event.apiResponse.availableItems!.count!,
-        totalPrice: effectivePrice!.toDouble(),
-        startDate: event.startDate,
-        endDate: event.endDate,
-        isExpanded: false,
-        availableCount: availableCount,
-      ));
-    } catch (e) {
-      emit(WorkspaceDetailError(e.toString()));
-    }
-  }
-
-  Future<void> _onFetchAvailabilityAndUpdate(
-      FetchAvailabilityAndUpdate event,
-      Emitter<WorkspaceDetailState> emit
-      ) async {
-    if (state is! WorkspaceDetailLoaded) return;
-    final currentState = state as WorkspaceDetailLoaded;
-
-    // Show loading state while fetching availability
-    emit(WorkspaceDetailLoading());
-
-    try {
-      // Fetch fresh availability data with time selection info using your slots API
-      final availabilityData = await fetchAvailabilityData(
-        assetId: event.assetId,
-        start: event.startDate.toIso8601String(),
-        end: event.endDate.toIso8601String(),
-        hasTimeSelected: event.hasTimeSelected,
+      // Calculate price with effective packages data if available
+      final totalPrice = _calculatePriceOptimized(
+        event.apiResponse,
+        event.startDate,
+        event.endDate,
+        event.hasTimeSelected, // FIXED: Use the correct parameter
+        effectivePackagesData?.effectivePrice?.toDouble(),
       );
 
-      // Use the computed availableItemsCount from slots
-      final availableCount = availabilityData.availableItemsCount ?? 0;
-      print("Fetched availability count from slots: $availableCount");
+      print("Initial total price calculated: $totalPrice");
 
-      // Debug: Show individual asset slots
-      if (availabilityData.data.isNotEmpty) {
-        for (int i = 0; i < availabilityData.data.length; i++) {
-          final datum = availabilityData.data[i];
-          print("Asset ${i + 1}: ${datum.slots.length} slots (${datum.title})");
-          for (int j = 0; j < datum.slots.length; j++) {
-            final slot = datum.slots[j];
-            print("  Slot ${j + 1}: ${slot.title} (${slot.availability.start} - ${slot.availability.end})");
-          }
-        }
-      }
-
-      // Calculate the number of days (excluding Sundays)
-      final int daysCount = calculateBusinessDays(event.startDate, event.endDate);
-
-      // Base price from the asset's rate
-      final double basePrice = currentState.asset.rate!.effectivePrice!.toDouble();
-
-      // Calculate total price based on days
-      final double totalPrice = basePrice * daysCount;
-
+      // Emit loaded state with effective packages data
       emit(WorkspaceDetailLoaded(
-        asset: currentState.asset,
-        count: currentState.count,
+        asset: event.apiResponse,
+        count: initialAvailableCount,
         totalPrice: totalPrice,
         startDate: event.startDate,
         endDate: event.endDate,
-        isExpanded: currentState.isExpanded,
-        availableCount: availableCount,
+        isExpanded: false,
+        effectivePackagesData: effectivePackagesData,
       ));
+
     } catch (e) {
-      print('Error fetching availability: $e');
-      // Emit error state or fallback to previous state with 0 availability
-      emit(WorkspaceDetailLoaded(
-        asset: currentState.asset,
-        count: currentState.count,
-        totalPrice: currentState.totalPrice,
-        startDate: event.startDate,
-        endDate: event.endDate,
-        isExpanded: currentState.isExpanded,
-        availableCount: 0, // Set to 0 on error to prevent booking
-      ));
-    }
-  }
-
-  void _onIncrementCount(IncrementCount event, Emitter<WorkspaceDetailState> emit) {
-    if (state is WorkspaceDetailLoaded) {
-      final loadedState = state as WorkspaceDetailLoaded;
-      final newCount = loadedState.count + 1;
-      final newTotalPrice = newCount * double.parse(loadedState.asset!.rate!.effectivePrice.toString() ?? '0.0');
-
-      emit(WorkspaceDetailLoaded(
-        asset: loadedState.asset,
-        count: newCount,
-        totalPrice: newTotalPrice,
-        startDate: loadedState.startDate,
-        endDate: loadedState.endDate,
-        isExpanded: loadedState.isExpanded,
-        availableCount: loadedState.availableCount,
-      ));
-    }
-  }
-
-  void _onDecrementCount(DecrementCount event, Emitter<WorkspaceDetailState> emit) {
-    if (state is WorkspaceDetailLoaded) {
-      final loadedState = state as WorkspaceDetailLoaded;
-      final newCount = loadedState.count > 1 ? loadedState.count - 1 : 1;
-      final newTotalPrice = newCount * double.parse(loadedState.asset!.rate!.effectivePrice.toString()  ?? '0.0');
-
-      emit(WorkspaceDetailLoaded(
-        asset: loadedState.asset,
-        count: newCount,
-        totalPrice: newTotalPrice,
-        startDate: loadedState.startDate,
-        endDate: loadedState.endDate,
-        isExpanded: loadedState.isExpanded,
-        availableCount: loadedState.availableCount,
-      ));
+      print('Error in InitializeWorkspaceDetail: $e');
+      emit(WorkspaceDetailError(e.toString()));
     }
   }
 
@@ -186,19 +189,45 @@ class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailStat
     if (state is! WorkspaceDetailLoaded) return;
     final currentState = state as WorkspaceDetailLoaded;
 
-    emit(WorkspaceDetailLoading());
+    print("UpdateDateRange called:");
+    print("Start: ${event.startDate}");
+    print("End: ${event.endDate}");
+    print("Has time selected: ${event.hasTimeSelected}");
 
+    // FIXED: Don't use debounce timer for now - emit immediately
     try {
-      final availableCount = currentState.availableCount!;
+      // Fetch effective packages for new date range
+      EffectivePackagesData? effectivePackagesData;
+      if (currentState.asset.familyId != null && currentState.asset.familyId!.isNotEmpty) {
+        print("Fetching effective packages for familyId: ${currentState.asset.familyId}");
 
-      // Calculate the number of days (excluding Sundays)
-      final int daysCount = calculateBusinessDays(event.startDate, event.endDate);
+        effectivePackagesData = await fetchEffectivePackages(
+          familyId: currentState.asset.familyId!,
+          fromDate: event.startDate,
+          toDate: event.endDate,
+          hasTimeSelected: event.hasTimeSelected,
+        );
 
-      // Base price from the asset's rate
-      final double basePrice = currentState.asset.rate!.effectivePrice!.toDouble();
+        print("Successfully fetched effective packages for date range update");
+      }
 
-      // Calculate total price based on days
-      final double totalPrice = basePrice * daysCount;
+      // Calculate price using updated effective price
+      final totalPrice = _calculatePriceOptimized(
+        currentState.asset,
+        event.startDate,
+        event.endDate,
+        event.hasTimeSelected,
+        effectivePackagesData?.effectivePrice?.toDouble(),
+      );
+
+      print("Updated total price: $totalPrice");
+
+      // FIXED: Always emit state immediately
+      print("=== EMITTING NEW STATE ===");
+      print("Emitting WorkspaceDetailLoaded with:");
+      print("- Total price: $totalPrice");
+      print("- Effective packages: ${effectivePackagesData?.packages.length ?? 0}");
+      print("- Effective price: ${effectivePackagesData?.effectivePrice}");
 
       emit(WorkspaceDetailLoaded(
         asset: currentState.asset,
@@ -207,271 +236,102 @@ class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailStat
         startDate: event.startDate,
         endDate: event.endDate,
         isExpanded: currentState.isExpanded,
-        availableCount: availableCount,
+        effectivePackagesData: effectivePackagesData,
       ));
+
+      print("=== STATE EMITTED SUCCESSFULLY ===");
+
     } catch (e) {
-      emit(WorkspaceDetailError(e.toString()));
-    }
-  }
-
-  void _onToggleDescription(ToggleDescription event, Emitter<WorkspaceDetailState> emit) {
-    if (state is! WorkspaceDetailLoaded) return;
-    final currentState = state as WorkspaceDetailLoaded;
-
-    emit(WorkspaceDetailLoaded(
+      print('Error updating date range: $e');
+      // Keep current state on error
+      emit(WorkspaceDetailLoaded(
         asset: currentState.asset,
         count: currentState.count,
         totalPrice: currentState.totalPrice,
-        startDate: currentState.startDate,
-        endDate: currentState.endDate,
-        isExpanded: !currentState.isExpanded,
-        availableCount: currentState.availableCount
-    ));
-  }
-
-  // Helper method to calculate business days (excluding Sundays)
-  int calculateBusinessDays(DateTime start, DateTime end) {
-    int days = 0;
-    DateTime current = DateTime(start.year, start.month, start.day);
-    DateTime endDate = DateTime(end.year, end.month, end.day);
-
-    while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
-      if (current.weekday != DateTime.sunday) {
-        days++;
-      }
-      current = current.add(Duration(days: 1));
-    }
-
-    return days > 0 ? days : 1; // Ensure at least 1 day
-  }
-
-  Future<AvailabilityData> fetchAvailabilityData({
-    required String assetId,
-    required String start,
-    required String end,
-    bool? hasTimeSelected,
-  }) async {
-    try {
-      final startDateTime = DateTime.parse(start);
-      final endDateTime = DateTime.parse(end);
-
-      // Format dates
-      final startDate = DateFormat('yyyy-MM-dd').format(startDateTime);
-      final endDate = DateFormat('yyyy-MM-dd').format(endDateTime);
-
-      // Check if this is a time-specific booking
-      final hasTime = hasTimeSelected ?? (start.contains('T') &&
-          end.contains('T') &&
-          start.split('T')[1] != '00:00:00' &&
-          end.split('T')[1] != '00:00:00');
-      // Create filters object
-      Map<String, dynamic> filters = {
-        "assetTypes": [assetId]
-      };
-
-      Map<String, String> queryParams = {
-        'fromDate': startDate,
-        'toDate': endDate,
-        'filters': jsonEncode(filters), // Convert filters to JSON string
-      };
-
-      // Only add time parameters if time is actually selected
-      if (hasTime) {
-        final startTime = DateFormat('HH:mm:ss').format(startDateTime);
-        final endTime = DateFormat('HH:mm:ss').format(endDateTime);
-        queryParams['fromTime'] = startTime;
-        queryParams['toTime'] = endTime;
-        print("Time-specific booking: $startTime - $endTime");
-      } else {
-        print("Date-only booking: No time parameters sent to API");
-      }
-
-      final uri = Uri.parse('https://corporate-dot-hornbill-staging.uc.r.appspot.com/booking/checkAssetAvailabilityv2')
-          .replace(queryParameters: queryParams);
-
-      print("Fetching availability with params: $queryParams");
-
-      final response = await http.get(uri);
-      print("Availability response - ${response.body}");
-
-      if (response.statusCode == 200) {
-        return AvailabilityData.fromJson(json.decode(response.body));
-      }
-
-      final errorBody = json.decode(response.body);
-      throw Exception(errorBody['message'] ?? 'Failed to fetch availability data');
-    } catch (e) {
-      print('Error details: $e');
-      rethrow;
-    }
-  }
-}
-
-*/
-class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailState> {
-  // Add caching for availability data
-  static final Map<String, CachedAvailabilityData> _availabilityCache = {};
-  static const Duration cacheExpiry = Duration(minutes: 3);
-
-  // Debounce timer for API calls
-  Timer? _debounceTimer;
-
-  WorkspaceDetailBloc() : super(WorkspaceDetailInitial()) {
-    on<InitializeWorkspaceDetail>(_onInitializeWorkspaceDetail);
-    on<UpdateDateRange>(_onUpdateDateRange);
-    on<FetchAvailabilityAndUpdate>(_onFetchAvailabilityAndUpdate);
-    on<ToggleDescription>(_onToggleDescription);
-    on<IncrementCount>(_onIncrementCount);
-    on<DecrementCount>(_onDecrementCount);
-  }
-
-  Future<void> _onInitializeWorkspaceDetail(
-      InitializeWorkspaceDetail event,
-      Emitter<WorkspaceDetailState> emit
-      ) async {
-    emit(WorkspaceDetailLoading());
-
-    try {
-      // Use initial count from API response immediately
-      final initialAvailableCount = event.apiResponse.availableItems?.count ?? 0;
-      final effectivePrice = event.apiResponse.rate?.effectivePrice?.toDouble() ?? 0.0;
-
-      // Emit loaded state immediately with initial data
-      emit(WorkspaceDetailLoaded(
-        asset: event.apiResponse,
-        count: initialAvailableCount,
-        totalPrice: effectivePrice,
         startDate: event.startDate,
         endDate: event.endDate,
-        isExpanded: false,
-        availableCount: initialAvailableCount,
+        isExpanded: currentState.isExpanded,
+        effectivePackagesData: currentState.effectivePackagesData,
       ));
-
-      // Fetch fresh availability in background (only if needed)
-      _fetchAvailabilityInBackground(event, emit);
-
-    } catch (e) {
-      emit(WorkspaceDetailError(e.toString()));
     }
   }
 
-  // Background availability fetch without blocking UI
-  void _fetchAvailabilityInBackground(
-      InitializeWorkspaceDetail event,
-      Emitter<WorkspaceDetailState> emit
-      ) async {
-    try {
-      final assetId = event.apiResponse.availableItems?.items?.isNotEmpty == true
-          ? event.apiResponse.availableItems!.items![0].assets![0].id!
-          : '';
-
-      if (assetId.isNotEmpty) {
-        final availabilityData = await fetchAvailabilityDataOptimized(
-          assetId: assetId,
-          start: event.startDate.toIso8601String(),
-          end: event.endDate.toIso8601String(),
-          hasTimeSelected: false,
-        );
-
-        // Only update if state is still loaded and data changed
-        if (state is WorkspaceDetailLoaded) {
-          final currentState = state as WorkspaceDetailLoaded;
-          final newAvailableCount = availabilityData.availableItemsCount ?? 0;
-        print("avail ---- ${availabilityData.availableItemsCount}");
-          if (newAvailableCount != currentState.availableCount) {
-            emit(WorkspaceDetailLoaded(
-              asset: currentState.asset,
-              count: currentState.count,
-              totalPrice: currentState.totalPrice,
-              startDate: currentState.startDate,
-              endDate: currentState.endDate,
-              isExpanded: currentState.isExpanded,
-              availableCount: newAvailableCount,
-            ));
-          }
-        }
-      }
-    } catch (e) {
-      print('Background availability fetch failed: $e');
-      // Don't emit error, keep current state
-    }
-  }
-
-  Future<void> _onFetchAvailabilityAndUpdate(
-      FetchAvailabilityAndUpdate event,
+  Future<void> _onFetchEffectivePackages(
+      FetchEffectivePackages event,
       Emitter<WorkspaceDetailState> emit
       ) async {
     if (state is! WorkspaceDetailLoaded) return;
 
     final currentState = state as WorkspaceDetailLoaded;
 
-    // Cancel previous debounce timer
-    _debounceTimer?.cancel();
+    try {
+      print("Manual fetch effective packages called");
 
-    // Debounce rapid calls
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
-      try {
-        final availabilityData = await fetchAvailabilityDataOptimized(
-          assetId: event.assetId,
-          start: event.startDate.toIso8601String(),
-          end: event.endDate.toIso8601String(),
-          hasTimeSelected: event.hasTimeSelected,
-        );
+      final effectivePackagesData = await fetchEffectivePackages(
+        familyId: event.familyId,
+        fromDate: event.fromDate,
+        toDate: event.toDate,
+        hasTimeSelected: event.hasTimeSelected,
+      );
 
-        final availableCount = availabilityData.availableItemsCount ?? 0;
+      // Calculate new price with updated effective price
+      final totalPrice = _calculatePriceOptimized(
+        currentState.asset,
+        event.fromDate,
+        event.toDate,
+        event.hasTimeSelected,
+        effectivePackagesData.effectivePrice?.toDouble(),
+      );
 
-        // Calculate price efficiently
-        final totalPrice = _calculatePriceOptimized(
-          currentState.asset,
-          event.startDate,
-          event.endDate,
-          event.hasTimeSelected ?? false,
-        );
-
-        if (state is WorkspaceDetailLoaded) {
-          emit(WorkspaceDetailLoaded(
-            asset: currentState.asset,
-            count: currentState.count,
-            totalPrice: totalPrice,
-            startDate: event.startDate,
-            endDate: event.endDate,
-            isExpanded: currentState.isExpanded,
-            availableCount: availableCount,
-          ));
-        }
-      } catch (e) {
-        print('Error fetching availability: $e');
-        // Keep current state with 0 availability on error
+      // Check if emit is still valid before emitting
+      if (!emit.isDone) {
         emit(WorkspaceDetailLoaded(
           asset: currentState.asset,
           count: currentState.count,
-          totalPrice: currentState.totalPrice,
-          startDate: event.startDate,
-          endDate: event.endDate,
+          totalPrice: totalPrice,
+          startDate: event.fromDate,
+          endDate: event.toDate,
           isExpanded: currentState.isExpanded,
-          availableCount: 0,
+          effectivePackagesData: effectivePackagesData,
         ));
+        print("Emitted state after manual effective packages fetch");
       }
-    });
+    } catch (e) {
+      print('Error fetching effective packages: $e');
+      // Keep current state on error
+    }
   }
 
-  // Optimized price calculation
+  // Optimized price calculation with effective price parameter
   double _calculatePriceOptimized(
       Datum asset,
       DateTime startDate,
       DateTime endDate,
-      bool hasTimeSelected
+      bool hasTimeSelected,
+      [double? effectivePrice]
       ) {
-    final basePrice = asset.rate?.effectivePrice?.toDouble() ?? 0.0;
+    final basePrice = effectivePrice ?? asset.rate?.effectivePrice?.toDouble() ?? 0.0;
+
+    print("Price calculation:");
+    print("Base price: $basePrice");
+    print("Has time selected: $hasTimeSelected");
+    print("Start: $startDate, End: $endDate");
 
     if (hasTimeSelected) {
-      // Simple hourly calculation without complex business logic
+      // Simple hourly calculation
       final hours = endDate.difference(startDate).inHours;
-      return basePrice * hours.clamp(1, 24); // Clamp to reasonable range
+      final clampedHours = hours.clamp(1, 24);
+      final totalPrice = basePrice * clampedHours;
+
+      print("Hourly calculation: $hours hours (clamped to $clampedHours) * $basePrice = $totalPrice");
+      return totalPrice;
     } else {
       // Daily calculation
       final days = _calculateBusinessDaysOptimized(startDate, endDate);
-      return basePrice * days;
+      final totalPrice = basePrice * days;
+
+      print("Daily calculation: $days days * $basePrice = $totalPrice");
+      return totalPrice;
     }
   }
 
@@ -501,7 +361,7 @@ class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailStat
   void _onIncrementCount(IncrementCount event, Emitter<WorkspaceDetailState> emit) {
     if (state is WorkspaceDetailLoaded) {
       final loadedState = state as WorkspaceDetailLoaded;
-      final newCount = (loadedState.count + 1).clamp(1, loadedState.availableCount);
+      final newCount = loadedState.count + 1;
       final newTotalPrice = loadedState.totalPrice / loadedState.count * newCount;
 
       emit(WorkspaceDetailLoaded(
@@ -511,7 +371,7 @@ class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailStat
         startDate: loadedState.startDate,
         endDate: loadedState.endDate,
         isExpanded: loadedState.isExpanded,
-        availableCount: loadedState.availableCount,
+        effectivePackagesData: loadedState.effectivePackagesData,
       ));
     }
   }
@@ -519,7 +379,7 @@ class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailStat
   void _onDecrementCount(DecrementCount event, Emitter<WorkspaceDetailState> emit) {
     if (state is WorkspaceDetailLoaded) {
       final loadedState = state as WorkspaceDetailLoaded;
-      final newCount = (loadedState.count - 1).clamp(1, loadedState.availableCount);
+      final newCount = (loadedState.count - 1).clamp(1, 999);
       final newTotalPrice = loadedState.totalPrice / loadedState.count * newCount;
 
       emit(WorkspaceDetailLoaded(
@@ -529,8 +389,307 @@ class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailStat
         startDate: loadedState.startDate,
         endDate: loadedState.endDate,
         isExpanded: loadedState.isExpanded,
-        availableCount: loadedState.availableCount,
+        effectivePackagesData: loadedState.effectivePackagesData,
       ));
+    }
+  }
+
+  void _onToggleDescription(ToggleDescription event, Emitter<WorkspaceDetailState> emit) {
+    if (state is! WorkspaceDetailLoaded) return;
+    final currentState = state as WorkspaceDetailLoaded;
+
+    emit(WorkspaceDetailLoaded(
+      asset: currentState.asset,
+      count: currentState.count,
+      totalPrice: currentState.totalPrice,
+      startDate: currentState.startDate,
+      endDate: currentState.endDate,
+      isExpanded: !currentState.isExpanded,
+      effectivePackagesData: currentState.effectivePackagesData,
+    ));
+  }
+
+  // Fetch effective packages method
+  Future<EffectivePackagesData> fetchEffectivePackages({
+    required String familyId,
+    required DateTime fromDate,
+    required DateTime toDate,
+    bool hasTimeSelected = false,
+  }) async {
+    // Create cache key
+    final cacheKey = '$familyId-${fromDate.toIso8601String()}-${toDate.toIso8601String()}-$hasTimeSelected';
+
+    // Check cache first
+    final cachedData = _effectivePackagesCache[cacheKey];
+    if (cachedData != null && !cachedData.isExpired) {
+      print('Using cached effective packages data for key: $cacheKey');
+      return cachedData.data;
+    }
+
+    try {
+      final fromDateStr = DateFormat('yyyy-MM-dd').format(fromDate);
+      final toDateStr = DateFormat('yyyy-MM-dd').format(toDate);
+
+      Map<String, String> queryParams = {
+        'fromDate': fromDateStr,
+        'toDate': toDateStr,
+      };
+
+      // Add time parameters if time is selected
+      if (hasTimeSelected) {
+        final fromTimeStr = DateFormat('HH:mm:ss').format(fromDate);
+        final toTimeStr = DateFormat('HH:mm:ss').format(toDate);
+        queryParams['fromTime'] = fromTimeStr;
+        queryParams['toTime'] = toTimeStr;
+
+        print("Adding time parameters to effective packages request:");
+        print("fromTime: $fromTimeStr, toTime: $toTimeStr");
+      }
+
+      final uri = Uri.parse('${base_url}asset/family/$familyId/effective-packages')
+          .replace(queryParameters: queryParams);
+
+      print("Fetching effective packages from: $uri");
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Connection': 'keep-alive',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          // Add any required authorization headers here
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      print("Effective packages API response status: ${response.statusCode}");
+
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        print("Effective packages API response: ${response.body}");
+
+        final data = EffectivePackagesData.fromJson(jsonData['data']);
+
+        // Cache the result
+        _effectivePackagesCache[cacheKey] = CachedEffectivePackagesData(data, DateTime.now());
+
+        // Clean old cache entries periodically
+        if (_effectivePackagesCache.length > 50) {
+          _cleanEffectivePackagesCache();
+        }
+
+        print("Successfully parsed effective packages data:");
+        print("Price: ${data.price}");
+        print("Effective Price: ${data.effectivePrice}");
+        print("Packages count: ${data.packages.length}");
+
+        return data;
+      } else {
+        print("Effective packages API error: ${response.statusCode} - ${response.body}");
+        final errorBody = json.decode(response.body);
+        throw Exception(errorBody['message'] ?? 'Failed to fetch effective packages');
+      }
+    } catch (e) {
+      print('Error fetching effective packages: $e');
+      rethrow;
+    }
+  }
+
+  // Clean old effective packages cache entries
+  void _cleanEffectivePackagesCache() {
+    final now = DateTime.now();
+    final oldCount = _effectivePackagesCache.length;
+    _effectivePackagesCache.removeWhere((key, value) =>
+    now.difference(value.timestamp) > cacheExpiry);
+    final newCount = _effectivePackagesCache.length;
+    print("Cleaned effective packages cache: $oldCount -> $newCount entries");
+  }
+
+  @override
+  Future<void> close() {
+    _debounceTimer?.cancel();
+    return super.close();
+  }
+}
+
+/*
+
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:hb_booking_mobile_app/home/model/model_assets.dart';
+import 'package:hb_booking_mobile_app/home/workspcae_detail/event_workspacedetail.dart';
+import 'package:hb_booking_mobile_app/home/workspcae_detail/state_workspacedetail.dart';
+import 'package:hb_booking_mobile_app/utils/constants.dart';
+
+// Effective Packages Data Models
+class EffectivePackagesData {
+  final double? price;
+  final double? effectivePrice;
+  final List<EffectivePackage> packages;
+
+  EffectivePackagesData({
+    this.price,
+    this.effectivePrice,
+    required this.packages,
+  });
+
+  factory EffectivePackagesData.fromJson(Map<String, dynamic> json) {
+    return EffectivePackagesData(
+      price: json['price']?.toDouble(),
+      effectivePrice: json['effectivePrice']?.toDouble(),
+      packages: json['packages'] != null
+          ? List<EffectivePackage>.from(json['packages'].map((x) => EffectivePackage.fromJson(x)))
+          : [],
+    );
+  }
+}
+
+class EffectivePackage {
+  final String id;
+  final String type;
+  final String name;
+  final double rate;
+  final PackageDuration duration;
+  final double perUnitRate;
+
+  EffectivePackage({
+    required this.id,
+    required this.type,
+    required this.name,
+    required this.rate,
+    required this.duration,
+    required this.perUnitRate,
+  });
+
+  factory EffectivePackage.fromJson(Map<String, dynamic> json) {
+    return EffectivePackage(
+      id: json['_id'] ?? '',
+      type: json['type'] ?? '',
+      name: json['name'] ?? '',
+      rate: (json['rate'] ?? 0).toDouble(),
+      duration: PackageDuration.fromJson(json['duration'] ?? {}),
+      perUnitRate: (json['perUnitRate'] ?? 0).toDouble(),
+    );
+  }
+}
+
+class PackageDuration {
+  final String unit;
+  final int value;
+
+  PackageDuration({
+    required this.unit,
+    required this.value,
+  });
+
+  factory PackageDuration.fromJson(Map<String, dynamic> json) {
+    return PackageDuration(
+      unit: json['unit'] ?? '',
+      value: json['value'] ?? 1,
+    );
+  }
+}
+
+// Cache class for effective packages data
+class CachedEffectivePackagesData {
+  final EffectivePackagesData data;
+  final DateTime timestamp;
+
+  CachedEffectivePackagesData(this.data, this.timestamp);
+
+  bool get isExpired =>
+      DateTime.now().difference(timestamp) > WorkspaceDetailBloc.cacheExpiry;
+}
+
+
+
+// Updated WorkspaceDetailBloc
+class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailState> {
+  // Add caching for effective packages data
+  static final Map<String, CachedEffectivePackagesData> _effectivePackagesCache = {};
+  static const Duration cacheExpiry = Duration(minutes: 3);
+
+  // Debounce timer for API calls
+  Timer? _debounceTimer;
+
+  WorkspaceDetailBloc() : super(WorkspaceDetailInitial()) {
+    on<InitializeWorkspaceDetail>(_onInitializeWorkspaceDetail);
+    on<UpdateDateRange>(_onUpdateDateRange);
+    on<ToggleDescription>(_onToggleDescription);
+    on<IncrementCount>(_onIncrementCount);
+    on<DecrementCount>(_onDecrementCount);
+    on<FetchEffectivePackages>(_onFetchEffectivePackages);
+  }
+
+  // FIXED: Add method to clear cache
+  void clearEffectivePackagesCache() {
+    _effectivePackagesCache.clear();
+    print("Cleared effective packages cache");
+  }
+
+  Future<void> _onInitializeWorkspaceDetail(
+      InitializeWorkspaceDetail event,
+      Emitter<WorkspaceDetailState> emit
+      ) async {
+    emit(WorkspaceDetailLoading());
+
+    try {
+      print("InitializeWorkspaceDetail - apiResponse: ${event.apiResponse}");
+      print("InitializeWorkspaceDetail - familyId: ${event.apiResponse.familyId}");
+      print("InitializeWorkspaceDetail - hasTimeSelected: ${event.hasTimeSelected}");
+
+      // Use initial count from API response immediately
+      final initialAvailableCount = event.apiResponse.availableItems?.count ?? 0;
+      final effectivePrice = event.apiResponse.rate?.effectivePrice?.toDouble() ?? 0.0;
+
+      // Try to fetch effective packages immediately
+      EffectivePackagesData? effectivePackagesData;
+      final familyId = event.apiResponse.familyId;
+
+      if (familyId != null && familyId.isNotEmpty) {
+        try {
+          effectivePackagesData = await fetchEffectivePackages(
+            familyId: familyId,
+            fromDate: event.startDate,
+            toDate: event.endDate,
+            hasTimeSelected: event.hasTimeSelected, // FIXED: Use the correct parameter
+          );
+          print("Successfully fetched effective packages during initialization");
+        } catch (e) {
+          print('Error fetching effective packages during initialization: $e');
+          // Continue with original data
+        }
+      } else {
+        print('No familyId available for effective packages fetch');
+      }
+
+      // Calculate price with effective packages data if available
+      final totalPrice = _calculatePriceOptimized(
+        event.apiResponse,
+        event.startDate,
+        event.endDate,
+        event.hasTimeSelected, // FIXED: Use the correct parameter
+        effectivePackagesData?.effectivePrice?.toDouble(),
+      );
+
+      print("Initial total price calculated: $totalPrice");
+
+      // Emit loaded state with effective packages data
+      emit(WorkspaceDetailLoaded(
+        asset: event.apiResponse,
+        count: initialAvailableCount,
+        totalPrice: totalPrice,
+        startDate: event.startDate,
+        endDate: event.endDate,
+        isExpanded: false,
+        effectivePackagesData: effectivePackagesData,
+      ));
+
+    } catch (e) {
+      print('Error in InitializeWorkspaceDetail: $e');
+      emit(WorkspaceDetailError(e.toString()));
     }
   }
 
@@ -541,23 +700,210 @@ class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailStat
     if (state is! WorkspaceDetailLoaded) return;
     final currentState = state as WorkspaceDetailLoaded;
 
-    // Update state immediately with calculated price
-    final totalPrice = _calculatePriceOptimized(
-      currentState.asset,
-      event.startDate,
-      event.endDate,
-      false, // Assume no time initially
-    );
+    print("UpdateDateRange called:");
+    print("Start: ${event.startDate}");
+    print("End: ${event.endDate}");
+    print("Has time selected: ${event.hasTimeSelected}");
 
-    emit(WorkspaceDetailLoaded(
-      asset: currentState.asset,
-      count: currentState.count,
-      totalPrice: totalPrice,
-      startDate: event.startDate,
-      endDate: event.endDate,
-      isExpanded: currentState.isExpanded,
-      availableCount: currentState.availableCount,
-    ));
+    // Cancel previous debounce timer
+    _debounceTimer?.cancel();
+
+    // Start new debounce timer
+    _debounceTimer = Timer(Duration(milliseconds: 500), () async {
+      try {
+        // Fetch effective packages for new date range
+        EffectivePackagesData? effectivePackagesData;
+        if (currentState.asset.familyId != null && currentState.asset.familyId!.isNotEmpty) {
+          print("Fetching effective packages for familyId: ${currentState.asset.familyId}");
+
+          effectivePackagesData = await fetchEffectivePackages(
+            familyId: currentState.asset.familyId!,
+            fromDate: event.startDate,
+            toDate: event.endDate,
+            hasTimeSelected: event.hasTimeSelected,
+          );
+
+          print("Successfully fetched effective packages for date range update");
+        }
+
+        // Calculate price using updated effective price
+        final totalPrice = _calculatePriceOptimized(
+          currentState.asset,
+          event.startDate,
+          event.endDate,
+          event.hasTimeSelected,
+          effectivePackagesData?.effectivePrice?.toDouble(),
+        );
+
+        print("Updated total price: $totalPrice");
+
+        // Check if emit is still valid before emitting
+        if (!emit.isDone) {
+          emit(WorkspaceDetailLoaded(
+            asset: currentState.asset,
+            count: currentState.count,
+            totalPrice: totalPrice,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            isExpanded: currentState.isExpanded,
+            effectivePackagesData: effectivePackagesData,
+          ));
+          print("Emitted updated state with effective packages");
+        }
+      } catch (e) {
+        print('Error updating date range: $e');
+        // Keep current state on error - only emit if still valid
+        if (!emit.isDone) {
+          emit(WorkspaceDetailLoaded(
+            asset: currentState.asset,
+            count: currentState.count,
+            totalPrice: currentState.totalPrice,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            isExpanded: currentState.isExpanded,
+            effectivePackagesData: currentState.effectivePackagesData,
+          ));
+        }
+      }
+    });
+  }
+
+  Future<void> _onFetchEffectivePackages(
+      FetchEffectivePackages event,
+      Emitter<WorkspaceDetailState> emit
+      ) async {
+    if (state is! WorkspaceDetailLoaded) return;
+
+    final currentState = state as WorkspaceDetailLoaded;
+
+    try {
+      print("Manual fetch effective packages called");
+
+      final effectivePackagesData = await fetchEffectivePackages(
+        familyId: event.familyId,
+        fromDate: event.fromDate,
+        toDate: event.toDate,
+        hasTimeSelected: event.hasTimeSelected,
+      );
+
+      // Calculate new price with updated effective price
+      final totalPrice = _calculatePriceOptimized(
+        currentState.asset,
+        event.fromDate,
+        event.toDate,
+        event.hasTimeSelected,
+        effectivePackagesData.effectivePrice?.toDouble(),
+      );
+
+      // Check if emit is still valid before emitting
+      if (!emit.isDone) {
+        emit(WorkspaceDetailLoaded(
+          asset: currentState.asset,
+          count: currentState.count,
+          totalPrice: totalPrice,
+          startDate: event.fromDate,
+          endDate: event.toDate,
+          isExpanded: currentState.isExpanded,
+          effectivePackagesData: effectivePackagesData,
+        ));
+        print("Emitted state after manual effective packages fetch");
+      }
+    } catch (e) {
+      print('Error fetching effective packages: $e');
+      // Keep current state on error
+    }
+  }
+
+  // Optimized price calculation with effective price parameter
+  double _calculatePriceOptimized(
+      Datum asset,
+      DateTime startDate,
+      DateTime endDate,
+      bool hasTimeSelected,
+      [double? effectivePrice]
+      ) {
+    final basePrice = effectivePrice ?? asset.rate?.effectivePrice?.toDouble() ?? 0.0;
+
+    print("Price calculation:");
+    print("Base price: $basePrice");
+    print("Has time selected: $hasTimeSelected");
+    print("Start: $startDate, End: $endDate");
+
+    if (hasTimeSelected) {
+      // Simple hourly calculation
+      final hours = endDate.difference(startDate).inHours;
+      final clampedHours = hours.clamp(1, 24);
+      final totalPrice = basePrice * clampedHours;
+
+      print("Hourly calculation: $hours hours (clamped to $clampedHours) * $basePrice = $totalPrice");
+      return totalPrice;
+    } else {
+      // Daily calculation
+      final days = _calculateBusinessDaysOptimized(startDate, endDate);
+      final totalPrice = basePrice * days;
+
+      print("Daily calculation: $days days * $basePrice = $totalPrice");
+      return totalPrice;
+    }
+  }
+
+  // Optimized business days calculation
+  int _calculateBusinessDaysOptimized(DateTime start, DateTime end) {
+    if (start.isAtSameMomentAs(end)) return 1;
+
+    final daysDiff = end.difference(start).inDays + 1;
+    if (daysDiff <= 7) {
+      // For short periods, count exactly
+      int businessDays = 0;
+      for (int i = 0; i < daysDiff; i++) {
+        final day = start.add(Duration(days: i));
+        if (day.weekday != DateTime.sunday) {
+          businessDays++;
+        }
+      }
+      return businessDays.clamp(1, daysDiff);
+    } else {
+      // For longer periods, use approximation
+      final weeks = daysDiff ~/ 7;
+      final remainingDays = daysDiff % 7;
+      return (weeks * 6) + remainingDays.clamp(0, 6);
+    }
+  }
+
+  void _onIncrementCount(IncrementCount event, Emitter<WorkspaceDetailState> emit) {
+    if (state is WorkspaceDetailLoaded) {
+      final loadedState = state as WorkspaceDetailLoaded;
+      final newCount = loadedState.count + 1;
+      final newTotalPrice = loadedState.totalPrice / loadedState.count * newCount;
+
+      emit(WorkspaceDetailLoaded(
+        asset: loadedState.asset,
+        count: newCount,
+        totalPrice: newTotalPrice,
+        startDate: loadedState.startDate,
+        endDate: loadedState.endDate,
+        isExpanded: loadedState.isExpanded,
+        effectivePackagesData: loadedState.effectivePackagesData,
+      ));
+    }
+  }
+
+  void _onDecrementCount(DecrementCount event, Emitter<WorkspaceDetailState> emit) {
+    if (state is WorkspaceDetailLoaded) {
+      final loadedState = state as WorkspaceDetailLoaded;
+      final newCount = (loadedState.count - 1).clamp(1, 999);
+      final newTotalPrice = loadedState.totalPrice / loadedState.count * newCount;
+
+      emit(WorkspaceDetailLoaded(
+        asset: loadedState.asset,
+        count: newCount,
+        totalPrice: newTotalPrice,
+        startDate: loadedState.startDate,
+        endDate: loadedState.endDate,
+        isExpanded: loadedState.isExpanded,
+        effectivePackagesData: loadedState.effectivePackagesData,
+      ));
+    }
   }
 
   void _onToggleDescription(ToggleDescription event, Emitter<WorkspaceDetailState> emit) {
@@ -565,99 +911,109 @@ class WorkspaceDetailBloc extends Bloc<WorkspaceDetailEvent, WorkspaceDetailStat
     final currentState = state as WorkspaceDetailLoaded;
 
     emit(WorkspaceDetailLoaded(
-        asset: currentState.asset,
-        count: currentState.count,
-        totalPrice: currentState.totalPrice,
-        startDate: currentState.startDate,
-        endDate: currentState.endDate,
-        isExpanded: !currentState.isExpanded,
-        availableCount: currentState.availableCount
+      asset: currentState.asset,
+      count: currentState.count,
+      totalPrice: currentState.totalPrice,
+      startDate: currentState.startDate,
+      endDate: currentState.endDate,
+      isExpanded: !currentState.isExpanded,
+      effectivePackagesData: currentState.effectivePackagesData,
     ));
   }
 
-  // Optimized availability fetch with caching
-  Future<AvailabilityData> fetchAvailabilityDataOptimized({
-    required String assetId,
-    required String start,
-    required String end,
-    bool? hasTimeSelected,
+  // Fetch effective packages method
+  Future<EffectivePackagesData> fetchEffectivePackages({
+    required String familyId,
+    required DateTime fromDate,
+    required DateTime toDate,
+    bool hasTimeSelected = false,
   }) async {
     // Create cache key
-    final cacheKey = '$assetId-$start-$end-${hasTimeSelected ?? false}';
+    final cacheKey = '$familyId-${fromDate.toIso8601String()}-${toDate.toIso8601String()}-$hasTimeSelected';
 
     // Check cache first
-    final cachedData = _availabilityCache[cacheKey];
+    final cachedData = _effectivePackagesCache[cacheKey];
     if (cachedData != null && !cachedData.isExpired) {
+      print('Using cached effective packages data for key: $cacheKey');
       return cachedData.data;
     }
 
     try {
-      final startDateTime = DateTime.parse(start);
-      final endDateTime = DateTime.parse(end);
+      final fromDateStr = DateFormat('yyyy-MM-dd').format(fromDate);
+      final toDateStr = DateFormat('yyyy-MM-dd').format(toDate);
 
-      final startDate = DateFormat('yyyy-MM-dd').format(startDateTime);
-      final endDate = DateFormat('yyyy-MM-dd').format(endDateTime);
-
-      final hasTime = hasTimeSelected ?? (start.contains('T') &&
-          end.contains('T') &&
-          start.split('T')[1] != '00:00:00' &&
-          end.split('T')[1] != '00:00:00');
-
-      Map<String, dynamic> filters = {
-        "assetTypes": [assetId]
-      };
-      print("count --uri  - ${assetId}");
       Map<String, String> queryParams = {
-        'fromDate': startDate,
-        'toDate': endDate,
-        'filters': jsonEncode(filters),
+        'fromDate': fromDateStr,
+        'toDate': toDateStr,
       };
 
-      if (hasTime) {
-        final startTime = DateFormat('HH:mm:ss').format(startDateTime);
-        final endTime = DateFormat('HH:mm:ss').format(endDateTime);
-        queryParams['fromTime'] = startTime;
-        queryParams['toTime'] = endTime;
+      // Add time parameters if time is selected
+      if (hasTimeSelected) {
+        final fromTimeStr = DateFormat('HH:mm:ss').format(fromDate);
+        final toTimeStr = DateFormat('HH:mm:ss').format(toDate);
+        queryParams['fromTime'] = fromTimeStr;
+        queryParams['toTime'] = toTimeStr;
+
+        print("Adding time parameters to effective packages request:");
+        print("fromTime: $fromTimeStr, toTime: $toTimeStr");
       }
 
-      final uri = Uri.parse('${base_url}booking/checkAssetAvailabilityv2')
+      final uri = Uri.parse('${base_url}asset/family/$familyId/effective-packages')
           .replace(queryParameters: queryParams);
+
+      print("Fetching effective packages from: $uri");
 
       final response = await http.get(
         uri,
         headers: {
           'Connection': 'keep-alive',
           'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          // Add any required authorization headers here
         },
       ).timeout(const Duration(seconds: 8));
-print("count --uri  - ${uri}");
+
+      print("Effective packages API response status: ${response.statusCode}");
+
       if (response.statusCode == 200) {
-        final data = AvailabilityData.fromJson(json.decode(response.body));
+        final jsonData = json.decode(response.body);
+        print("Effective packages API response: ${response.body}");
+
+        final data = EffectivePackagesData.fromJson(jsonData['data']);
 
         // Cache the result
-        _availabilityCache[cacheKey] = CachedAvailabilityData(data, DateTime.now());
+        _effectivePackagesCache[cacheKey] = CachedEffectivePackagesData(data, DateTime.now());
 
         // Clean old cache entries periodically
-        if (_availabilityCache.length > 50) {
-          _cleanCache();
+        if (_effectivePackagesCache.length > 50) {
+          _cleanEffectivePackagesCache();
         }
-        print("count --uri  - ${response.body}");
-        return data;
-      }
 
-      final errorBody = json.decode(response.body);
-      throw Exception(errorBody['message'] ?? 'Failed to fetch availability data');
+        print("Successfully parsed effective packages data:");
+        print("Price: ${data.price}");
+        print("Effective Price: ${data.effectivePrice}");
+        print("Packages count: ${data.packages.length}");
+
+        return data;
+      } else {
+        print("Effective packages API error: ${response.statusCode} - ${response.body}");
+        final errorBody = json.decode(response.body);
+        throw Exception(errorBody['message'] ?? 'Failed to fetch effective packages');
+      }
     } catch (e) {
-      print('Error details: $e');
+      print('Error fetching effective packages: $e');
       rethrow;
     }
   }
 
-  // Clean old cache entries
-  void _cleanCache() {
+  // Clean old effective packages cache entries
+  void _cleanEffectivePackagesCache() {
     final now = DateTime.now();
-    _availabilityCache.removeWhere((key, value) =>
+    final oldCount = _effectivePackagesCache.length;
+    _effectivePackagesCache.removeWhere((key, value) =>
     now.difference(value.timestamp) > cacheExpiry);
+    final newCount = _effectivePackagesCache.length;
+    print("Cleaned effective packages cache: $oldCount -> $newCount entries");
   }
 
   @override
@@ -667,453 +1023,5 @@ print("count --uri  - ${uri}");
   }
 }
 
-// Cache class for availability data
-class CachedAvailabilityData {
-  final AvailabilityData data;
-  final DateTime timestamp;
+*/
 
-  CachedAvailabilityData(this.data, this.timestamp);
-
-  bool get isExpired =>
-      DateTime.now().difference(timestamp) > WorkspaceDetailBloc.cacheExpiry;
-}
-
-
-
-// Updated model for asset availability data
-class AvailabilityData {
-  final String status;
-  final String message;
-  final List<Asset> data;
-  final int? availableItemsCount; // Computed from counting all slots
-
-  AvailabilityData({
-    required this.status,
-    required this.message,
-    required this.data,
-    this.availableItemsCount,
-  });
-
-  factory AvailabilityData.fromJson(Map<String, dynamic> json) {
-    List<Asset> assets = [];
-    if (json['data'] != null) {
-      assets = List<Asset>.from(json['data'].map((x) => Asset.fromJson(x)));
-    }
-
-    // Calculate total available items by counting all slots
-    int totalAvailableItems = 0;
-    for (var asset in assets) {
-      totalAvailableItems += asset.slots.length;
-    }
-
-    return AvailabilityData(
-      status: json['status'] ?? '',
-      message: json['message'] ?? '',
-      data: assets,
-      availableItemsCount: totalAvailableItems,
-    );
-  }
-}
-
-class Asset {
-  final String id;
-  final List<String> aminities;
-  final List<AssetImage> images;
-  final AssetType assetType;
-  final Branch branch;
-  final String description;
-  final String title;
-  final AssetImage thumbnail;
-  final String familyId;
-  final String familyTitle;
-  final List<Slot> slots;
-
-  Asset({
-    required this.id,
-    required this.aminities,
-    required this.images,
-    required this.assetType,
-    required this.branch,
-    required this.description,
-    required this.title,
-    required this.thumbnail,
-    required this.familyId,
-    required this.familyTitle,
-    required this.slots,
-  });
-
-  factory Asset.fromJson(Map<String, dynamic> json) {
-    return Asset(
-      id: json['_id'] ?? '',
-      aminities: json['aminities'] != null
-          ? List<String>.from(json['aminities'])
-          : [],
-      images: json['images'] != null
-          ? List<AssetImage>.from(json['images'].map((x) => AssetImage.fromJson(x)))
-          : [],
-      assetType: AssetType.fromJson(json['assetType'] ?? {}),
-      branch: Branch.fromJson(json['branch'] ?? {}),
-      description: json['description'] ?? '',
-      title: json['title'] ?? '',
-      thumbnail: AssetImage.fromJson(json['thumbnail'] ?? {}),
-      familyId: json['familyId'] ?? '',
-      familyTitle: json['familyTitle'] ?? '',
-      slots: json['slots'] != null
-          ? List<Slot>.from(json['slots'].map((x) => Slot.fromJson(x)))
-          : [],
-    );
-  }
-}
-
-class AssetImage {
-  final String filename;
-  final String originalFilename;
-  final String path;
-  final String mimeType;
-
-  AssetImage({
-    required this.filename,
-    required this.originalFilename,
-    required this.path,
-    required this.mimeType,
-  });
-
-  factory AssetImage.fromJson(Map<String, dynamic> json) {
-    return AssetImage(
-      filename: json['filename'] ?? json['Filename'] ?? '',
-      originalFilename: json['originalFilename'] ?? json['OriginalFilename'] ?? '',
-      path: json['path'] ?? '',
-      mimeType: json['mimeType'] ?? json['MimeType'] ?? '',
-    );
-  }
-}
-
-class AssetType {
-  final String id;
-  final List<String> additionalInputs;
-  final String status;
-  final String title;
-  final String description;
-  final AssetImage? thumbnail;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final int version;
-
-  AssetType({
-    required this.id,
-    required this.additionalInputs,
-    required this.status,
-    required this.title,
-    required this.description,
-    this.thumbnail,
-    required this.createdAt,
-    required this.updatedAt,
-    required this.version,
-  });
-
-  factory AssetType.fromJson(Map<String, dynamic> json) {
-    return AssetType(
-      id: json['_id'] ?? '',
-      additionalInputs: json['additionalInputs'] != null
-          ? List<String>.from(json['additionalInputs'])
-          : [],
-      status: json['status'] ?? '',
-      title: json['title'] ?? '',
-      description: json['description'] ?? '',
-      thumbnail: json['thumbnail'] != null
-          ? AssetImage.fromJson(json['thumbnail'])
-          : null,
-      createdAt: DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
-      updatedAt: DateTime.parse(json['updatedAt'] ?? DateTime.now().toIso8601String()),
-      version: json['__v'] ?? 0,
-    );
-  }
-}
-
-class Branch {
-  final String id;
-  final List<AssetImage> images;
-  final List<AOpeningHour> openingHours;
-  final List<FloorAndZone> floorsAndZones;
-  final String type;
-  final String status;
-  final String corporateId;
-  final String name;
-  final String displayName;
-  final String email;
-  final String tel;
-  final Address address;
-  final String description;
-  final Meta meta;
-  final DateTime since;
-  final int version;
-  final Amenities? amenities;
-  final bool? approvalForEdit;
-  final String? website;
-  final double averageRating;
-  final int totalReviews;
-
-  Branch({
-    required this.id,
-    required this.images,
-    required this.openingHours,
-    required this.floorsAndZones,
-    required this.type,
-    required this.status,
-    required this.corporateId,
-    required this.name,
-    required this.displayName,
-    required this.email,
-    required this.tel,
-    required this.address,
-    required this.description,
-    required this.meta,
-    required this.since,
-    required this.version,
-    this.amenities,
-    this.approvalForEdit,
-    this.website,
-    required this.averageRating,
-    required this.totalReviews,
-  });
-
-  factory Branch.fromJson(Map<String, dynamic> json) {
-    return Branch(
-      id: json['_id'] ?? '',
-      images: json['images'] != null
-          ? List<AssetImage>.from(json['images'].map((x) => AssetImage.fromJson(x)))
-          : [],
-      openingHours: json['openingHours'] != null
-          ? List<AOpeningHour>.from(json['openingHours'].map((x) => AOpeningHour.fromJson(x)))
-          : [],
-      floorsAndZones: json['floorsAndZones'] != null
-          ? List<FloorAndZone>.from(json['floorsAndZones'].map((x) => FloorAndZone.fromJson(x)))
-          : [],
-      type: json['type'] ?? '',
-      status: json['status'] ?? '',
-      corporateId: json['corporateId'] ?? '',
-      name: json['name'] ?? '',
-      displayName: json['displayName'] ?? '',
-      email: json['email'] ?? '',
-      tel: json['tel'] ?? '',
-      address: Address.fromJson(json['address'] ?? {}),
-      description: json['description'] ?? '',
-      meta: Meta.fromJson(json['meta'] ?? {}),
-      since: DateTime.parse(json['since'] ?? DateTime.now().toIso8601String()),
-      version: json['__v'] ?? 0,
-      amenities: json['aminities'] != null ? Amenities.fromJson(json['aminities']) : null,
-      approvalForEdit: json['approvalForEdit'],
-      website: json['website'],
-      averageRating: (json['averageRating'] ?? 0).toDouble(),
-      totalReviews: json['totalReviews'] ?? 0,
-    );
-  }
-}
-
-class AOpeningHour {
-  final String day;
-  final bool isOpen;
-  final bool allDay;
-  final String from;
-  final String to;
-
-  AOpeningHour({
-    required this.day,
-    required this.isOpen,
-    required this.allDay,
-    required this.from,
-    required this.to,
-  });
-
-  factory AOpeningHour.fromJson(Map<String, dynamic> json) {
-    return AOpeningHour(
-      day: json['day'] ?? '',
-      isOpen: json['isOpen'] ?? false,
-      allDay: json['allDay'] ?? false,
-      from: json['from'] ?? '',
-      to: json['to'] ?? '',
-    );
-  }
-}
-
-class FloorAndZone {
-  final List<Floor> floors;
-  final String name;
-
-  FloorAndZone({
-    required this.floors,
-    required this.name,
-  });
-
-  factory FloorAndZone.fromJson(Map<String, dynamic> json) {
-    return FloorAndZone(
-      floors: json['floors'] != null
-          ? List<Floor>.from(json['floors'].map((x) => Floor.fromJson(x)))
-          : [],
-      name: json['name'] ?? '',
-    );
-  }
-}
-
-class Floor {
-  final String name;
-  final int level;
-  final List<Zone> zones;
-
-  Floor({
-    required this.name,
-    required this.level,
-    required this.zones,
-  });
-
-  factory Floor.fromJson(Map<String, dynamic> json) {
-    return Floor(
-      name: json['name'] ?? '',
-      level: json['level'] ?? 0,
-      zones: json['zones'] != null
-          ? List<Zone>.from(json['zones'].map((x) => Zone.fromJson(x)))
-          : [],
-    );
-  }
-}
-
-class Zone {
-  final String name;
-
-  Zone({
-    required this.name,
-  });
-
-  factory Zone.fromJson(Map<String, dynamic> json) {
-    return Zone(
-      name: json['name'] ?? '',
-    );
-  }
-}
-
-class Address {
-  final String name;
-  final String formattedAddress;
-  final List<AddressComponent> addressComponents;
-  final Location location;
-
-  Address({
-    required this.name,
-    required this.formattedAddress,
-    required this.addressComponents,
-    required this.location,
-  });
-
-  factory Address.fromJson(Map<String, dynamic> json) {
-    return Address(
-      name: json['name'] ?? '',
-      formattedAddress: json['formattedAddress'] ?? '',
-      addressComponents: json['address_components'] != null
-          ? List<AddressComponent>.from(json['address_components'].map((x) => AddressComponent.fromJson(x)))
-          : [],
-      location: Location.fromJson(json['location'] ?? {}),
-    );
-  }
-}
-
-class AddressComponent {
-  final String longName;
-  final String shortName;
-  final List<String> types;
-
-  AddressComponent({
-    required this.longName,
-    required this.shortName,
-    required this.types,
-  });
-
-  factory AddressComponent.fromJson(Map<String, dynamic> json) {
-    return AddressComponent(
-      longName: json['long_name'] ?? '',
-      shortName: json['short_name'] ?? '',
-      types: json['types'] != null ? List<String>.from(json['types']) : [],
-    );
-  }
-}
-
-class Location {
-  final double lat;
-  final double lng;
-
-  Location({
-    required this.lat,
-    required this.lng,
-  });
-
-  factory Location.fromJson(Map<String, dynamic> json) {
-    return Location(
-      lat: (json['lat'] ?? 0).toDouble(),
-      lng: (json['lng'] ?? 0).toDouble(),
-    );
-  }
-}
-
-class Meta {
-  final int stepsCompleted;
-
-  Meta({
-    required this.stepsCompleted,
-  });
-
-  factory Meta.fromJson(Map<String, dynamic> json) {
-    return Meta(
-      stepsCompleted: json['stepsCompleted'] ?? 0,
-    );
-  }
-}
-
-class Amenities {
-  final bool sportsTeam;
-
-  Amenities({
-    required this.sportsTeam,
-  });
-
-  factory Amenities.fromJson(Map<String, dynamic> json) {
-    return Amenities(
-      sportsTeam: json['sports_team'] ?? false,
-    );
-  }
-}
-
-class Slot {
-  final String title;
-  final String id;
-  final Availability availability;
-
-  Slot({
-    required this.title,
-    required this.id,
-    required this.availability,
-  });
-
-  factory Slot.fromJson(Map<String, dynamic> json) {
-    return Slot(
-      title: json['title'] ?? '',
-      id: json['_id'] ?? '',
-      availability: Availability.fromJson(json['availability'] ?? {}),
-    );
-  }
-}
-
-class Availability {
-  final DateTime start;
-  final DateTime end;
-
-  Availability({
-    required this.start,
-    required this.end,
-  });
-
-  factory Availability.fromJson(Map<String, dynamic> json) {
-    return Availability(
-      start: DateTime.parse(json['start'] ?? DateTime.now().toIso8601String()),
-      end: DateTime.parse(json['end'] ?? DateTime.now().toIso8601String()),
-    );
-  }
-}
