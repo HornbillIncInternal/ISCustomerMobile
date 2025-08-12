@@ -42,6 +42,8 @@ class _LoginConfirmationScreenState extends State<LoginConfirmationScreen> {
   void initState() {
     super.initState();
     _loadRememberMe();
+
+    print("avl-----${ widget.apiResponse.availableItems?.items![0].toString()}");
   }
 
   // Load remember me and email preferences

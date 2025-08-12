@@ -26,31 +26,9 @@ import '../../search/state_search.dart';
 import '../../search/widgets/widget_select_date.dart';
 import 'bloc_workspacedetail.dart';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+
 import 'package:intl/intl.dart';
-import 'package:hb_booking_mobile_app/authentication/bloc_login.dart';
-import 'package:hb_booking_mobile_app/authentication/screen_login_confirmation.dart';
-import 'package:hb_booking_mobile_app/booking/screen_booking.dart';
-import 'package:hb_booking_mobile_app/connectivity/connectivity_bloc.dart';
-import 'package:hb_booking_mobile_app/connectivity/connectivity_state.dart';
-import 'package:hb_booking_mobile_app/home/model/model_assets.dart';
-import 'package:hb_booking_mobile_app/home/workspcae_detail/event_workspacedetail.dart';
-import 'package:hb_booking_mobile_app/home/workspcae_detail/state_workspacedetail.dart';
-import 'package:hb_booking_mobile_app/home/workspcae_detail/widget_image_gallery.dart';
-import 'package:hb_booking_mobile_app/home/workspcae_detail/workspace_reviews/review_repository.dart';
-import 'package:hb_booking_mobile_app/home/workspcae_detail/workspace_reviews/reviews_bloc.dart';
-import 'package:hb_booking_mobile_app/home/workspcae_detail/workspace_reviews/screen_reviews.dart';
-import 'package:hb_booking_mobile_app/utils/colors.dart';
-import 'package:hb_booking_mobile_app/utils/functions.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:hb_booking_mobile_app/utils/is_loader.dart';
-import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../search/state_search.dart';
-import 'bloc_workspacedetail.dart';
+
 
 class WorkspaceDetailScreen extends StatefulWidget {
   final Datum apiResponse;
@@ -208,6 +186,7 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
       print("endDate: ${endDate.toString()}");
       print("hasTimeSelected: $hasTimeSelected");
       print("dateTimeRanges: $dateTimeRanges");
+
     });
 
     // FIXED: Clear cache before making new API call to ensure fresh data
@@ -1196,6 +1175,7 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
 
   Future<void> _handleBooking(BuildContext context, WorkspaceDetailLoaded state) async {
     bool isLoggedIn = await _checkLoginStatus();
+
     if (!isLoggedIn) {
       Navigator.push(
         context,
@@ -1238,6 +1218,7 @@ class _WorkspaceDetailScreenState extends State<WorkspaceDetailScreen> {
         ),
       ),
     );
+
   }
 
   Widget buildAmenitiesList(List<String> amenities) {

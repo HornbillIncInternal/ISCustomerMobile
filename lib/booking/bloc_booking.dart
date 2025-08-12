@@ -525,6 +525,23 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     emit(BookingFailure(event.error));
   }
 
+  String timeStringToHHMMSS(String timeString) {
+    // Split by '.' to remove milliseconds if present
+    String timeWithoutMs = timeString.split('.')[0];
+
+    // Split by ':' to get hours, minutes, seconds
+    List<String> parts = timeWithoutMs.split(':');
+
+    if (parts.length >= 3) {
+      String hours = parts[0].padLeft(2, '0');
+      String minutes = parts[1].padLeft(2, '0');
+      String seconds = parts[2].padLeft(2, '0');
+
+      return '$hours:$minutes:$seconds';
+    }
+
+    return '00:00:00'; // Default for invalid format
+  }
   Future<void> _onBlockAsset(BlockAssetEvent event, Emitter<BookingState> emit) async {
     emit(BlockAssetLoading());
 
@@ -532,6 +549,7 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     final accessToken = prefs.getString('accessToken') ?? '';
     List<String> fparts = event.from.split(' ');
     List<String> tparts = event.to.split(' ');
+
 
     String fdate = fparts[0];
     String ftime = fparts[1];
@@ -549,8 +567,8 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
           'assets': event.items,
           'fromDate': fdate,
           'toDate': tdate,
-          'fromTime': ftime,
-          'toTime': ttime
+          'fromTime': timeStringToHHMMSS(ftime),
+          'toTime': timeStringToHHMMSS(ttime)
         }),
       );
 

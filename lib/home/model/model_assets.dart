@@ -273,22 +273,30 @@ class Asset {
 }
 
 class Availability {
-  final DateTime? start;
-  final DateTime? end;
+  DateTime? start;
+  DateTime? end;
+  String? fromTime;
+  String? toTime;
 
   Availability({
     this.start,
     this.end,
+    this.fromTime,
+    this.toTime,
   });
 
-  factory Availability.fromJson(Map<String, dynamic>? json) => Availability(
-    start: json?["start"] == null ? null : DateTime.parse(json!["start"]),
-    end: json?["end"] == null ? null : DateTime.parse(json!["end"]),
+  factory Availability.fromJson(Map<String, dynamic> json) => Availability(
+    start: json["start"] == null ? null : DateTime.parse(json["start"]),
+    end: json["end"] == null ? null : DateTime.parse(json["end"]),
+    fromTime: json["fromTime"],
+    toTime: json["toTime"],
   );
 
   Map<String, dynamic> toJson() => {
     "start": start?.toIso8601String(),
     "end": end?.toIso8601String(),
+    "fromTime": fromTime,
+    "toTime": toTime,
   };
 }
 

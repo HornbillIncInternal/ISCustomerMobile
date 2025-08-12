@@ -92,6 +92,8 @@ class _ScreenHomeConfirmationState extends State<ScreenHomeConfirmation> {
     super.initState();
     for (var dayRange in widget.dateTimeRanges) {
       print("Start: ${dayRange['start']}, End: ${dayRange['end']}");
+
+
     }
 
     // Calculate required credits
